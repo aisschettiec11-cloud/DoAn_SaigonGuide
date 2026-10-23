@@ -1,0 +1,64 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: dotnet test AudioGuide.sln --configuration Release --collect:"XPlat Code Coverage"
+      - name: Require business line coverage ≥70%
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as E
+          files=list(Path('backend/AudioGuide.Tests/TestResults').glob('*/coverage.cobertura.xml'))
+          assert files, 'No current coverage result'
+          root=E.parse(max(files,key=lambda p:p.stat().st_mtime)).getroot()
+          package=next(p for p in root.findall('packages/package') if p.get('name')=='AudioGuide.Business')
+          coverage=float(package.get('line-rate'))
+          print(f'Business coverage: {coverage:.1%}')
+          assert coverage >= .7
+          PY
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run lint && npm test && npm run build
+        working-directory: frontend
+      - run: python3 scripts/init-env.py
+      - run: docker compose up -d --build --wait --wait-timeout 180
+      - name: Wait for API migration and seed
+        run: |
+          for n in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8080/health; then exit 0; fi
+            sleep 2
+          done
+          docker compose logs --tail=100 api
+          exit 1
+      - run: python3 scripts/integration.py
+        env:
+          API_BASE: http://127.0.0.1:8080
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run test:e2e
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://127.0.0.1:8080
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-evidence
+          path: |
+            backend/AudioGuide.Tests/TestResults/
+            frontend/test-results/

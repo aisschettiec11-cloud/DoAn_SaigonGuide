@@ -1,0 +1,79 @@
+using Xunit;
+using AudioGuide.Business;
+using AudioGuide.Data;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using System.IdentityModel.Tokens.Jwt;
+using System.Net;
+using System.Text;
+namespace AudioGuide.Tests;
+public class GeoTests
+{
+    [Theory]
+    [InlineData(0, 0, 0, 0, 0)]
+    [InlineData(0, 0, 0, 1, 111195)]
+    [InlineData(10.7799, 106.6999, 10.7798, 106.6990, 99)]
+    public void Haversine(double a, double b, double c, double d, double expected) => Assert.InRange(GeofenceService.Distance(a, b, c, d), Math.Max(0, expected - 2), expected + 2);
+    [Fact] public void OverlapChoosesNormalizedDistanceThenPriority() { var s = new GeofenceService(); var p = new[] { new Location { Id = 1, Latitude = 0, Longitude = .0003, RadiusM = 50 }, new Location { Id = 2, Latitude = 0, Longitude = .0004, RadiusM = 100 }, new Location { Id = 3, Latitude = 0, Longitude = .0004, RadiusM = 100, Priority = 5 } }; Assert.Equal(new[] { 3, 2, 1 }, s.Nearby(p, 0, 0, 5).Select(x => x.Id)); }
+    [Fact] public void RejectsPoorAccuracyAndInactive() { var s = new GeofenceService(); Assert.Empty(s.Nearby([new() { RadiusM = 50 }], 0, 0, 51)); Assert.Empty(s.Nearby([new() { RadiusM = 50, IsActive = false }], 0, 0, 5)); Assert.Empty(s.Nearby([new() { RadiusM = 50, Latitude = 1 }], 0, 0, 5)); }
+    [Theory][InlineData(91, 0, 1)][InlineData(0, 181, 1)][InlineData(0, 0, -1)] public void InvalidCoordinates(double lat, double lng, double accuracy) => Assert.Throws<AppError>(() => new GeofenceService().Nearby([], lat, lng, accuracy));
+}
+public class Fixture : IDisposable
+{
+    public AppDbContext Db { get; }
+    public GuideService Service { get; }
+    public Fixture() { Db = new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options); Service = new(new Repository(Db)); Db.Languages.AddRange(new Language { Id = 1, Code = "vi", Name = "Việt", NativeName = "Việt", TtsVoiceCode = "vi-VN", IsDefault = true }, new Language { Id = 2, Code = "en", Name = "English", NativeName = "English", TtsVoiceCode = "en-US" }, new Language { Id = 3, Code = "ko", Name = "Korean", NativeName = "한국어", TtsVoiceCode = "ko-KR" }); Db.Locations.AddRange(new Location { Id = 1, Slug = "test", RadiusM = 60 }, new Location { Id = 2, Slug = "empty", IsActive = false }); Db.Translations.AddRange(new LocationTranslation { Id = 1, LocationId = 1, LanguageId = 1, Name = "Tên Việt", NarrationText = "Văn bản gốc", Status = "Published" }, new LocationTranslation { Id = 2, LocationId = 1, LanguageId = 2, Name = "English", NarrationText = "English story", Status = "Published" }, new LocationTranslation { Id = 3, LocationId = 1, LanguageId = 3, Name = "한국어", NarrationText = "초안", Status = "Draft" }); Db.SaveChanges(); }
+    public void Dispose() => Db.Dispose();
+}
+public class GuideTests : Fixture
+{
+    [Fact] public async Task PublishedNarrationUsesRequestedLanguage() { var n = await Service.Narration(1, "vi"); Assert.Equal("vi", n.LanguageCode); Assert.False(n.Fallback); }
+    [Fact] public async Task DraftLanguageFallsBackToEnglish() { var n = await Service.Narration(1, "ko"); Assert.Equal("en", n.LanguageCode); Assert.True(n.Fallback); }
+    [Fact] public async Task MissingEnglishDoesNotLeakDraft() { Db.Translations.Remove(await Db.Translations.FindAsync(2) ?? throw new Exception()); await Db.SaveChangesAsync(); var e = await Assert.ThrowsAsync<AppError>(() => Service.Narration(1, "ko")); Assert.Equal(404, e.Status); }
+    [Fact] public async Task InactiveLocationIsHidden() { await Assert.ThrowsAsync<AppError>(() => Service.Narration(2, "vi")); Assert.Single((IEnumerable<object>)await Service.Locations("vi")); Assert.Equal(2, ((IEnumerable<Location>)await Service.Locations("vi", true)).Count()); }
+    [Fact] public async Task InactiveLanguageIsHidden() { Db.Languages.Find(3)!.IsActive = false; await Db.SaveChangesAsync(); Assert.Equal(2, (await Service.Languages()).Count); Assert.Equal(3, (await Service.Languages(true)).Count); }
+    [Fact] public async Task LocationCrudAndValidation() { var p = await Service.SaveLocation(0, new() { Slug = "new-point", Latitude = 10, Longitude = 106, RadiusM = 100, Address = "A", ImageUrl = "https://example.com/image.png" }); Assert.True(p.Id > 0); p.Address = "B"; await Service.SaveLocation(p.Id, p); await Service.DeleteLocation(p.Id); Assert.Null(await Db.Locations.FindAsync(p.Id)); }
+    [Theory]
+    [InlineData("bad slug", 50, "")]
+    [InlineData("ok", 1, "")]
+    [InlineData("ok", 80, "javascript:alert(1)")]
+    [InlineData("ok", 80, "//evil.test/a")]
+    public async Task InvalidLocation(string slug, int radius, string url) => await Assert.ThrowsAsync<AppError>(() => Service.SaveLocation(0, new() { Slug = slug, RadiusM = radius, ImageUrl = url }));
+    [Fact] public async Task DuplicateSlugAndMissingLocation() { Assert.Equal(409, (await Assert.ThrowsAsync<AppError>(() => Service.SaveLocation(0, new() { Slug = "test" }))).Status); Assert.Equal(404, (await Assert.ThrowsAsync<AppError>(() => Service.SaveLocation(900, new() { Slug = "other" }))).Status); await Assert.ThrowsAsync<AppError>(() => Service.DeleteLocation(900)); }
+    [Fact] public async Task CannotDeleteReferencedPoint() { Assert.Equal(409, (await Assert.ThrowsAsync<AppError>(() => Service.DeleteLocation(1))).Status); }
+    [Fact] public async Task LanguageCrudDefaultAndGuards() { var l = await Service.SaveLanguage(0, new() { Code = "fr", Name = "French", NativeName = "Français", TtsVoiceCode = "fr-FR" }); l.IsDefault = true; await Service.SaveLanguage(l.Id, l); Assert.False(Db.Languages.Find(1)!.IsDefault); Assert.Equal(409, (await Assert.ThrowsAsync<AppError>(() => Service.DeleteLanguage(l.Id))).Status); var en = Db.Languages.Find(2)!; en.IsDefault = true; await Service.SaveLanguage(en.Id, en); await Service.DeleteLanguage(l.Id); Assert.Null(await Db.Languages.FindAsync(l.Id)); }
+    [Fact] public async Task LanguageValidation() { await Assert.ThrowsAsync<AppError>(() => Service.SaveLanguage(0, new() { Code = "FR", Name = "French", NativeName = "French", TtsVoiceCode = "fr-FR" })); await Assert.ThrowsAsync<AppError>(() => Service.SaveLanguage(0, new() { Code = "vi", Name = "Vietnamese", NativeName = "Việt", TtsVoiceCode = "vi-VN" })); await Assert.ThrowsAsync<AppError>(() => Service.SaveLanguage(999, new() { Code = "fr", Name = "French", NativeName = "French", TtsVoiceCode = "fr-FR" })); await Assert.ThrowsAsync<AppError>(() => Service.DeleteLanguage(999)); await Assert.ThrowsAsync<AppError>(() => Service.DeleteLanguage(2)); }
+    [Fact] public async Task DefaultLanguageMustRemainActive() { var p = new Language { Code = "de", Name = "German", NativeName = "Deutsch", TtsVoiceCode = "de-DE", IsDefault = true, IsActive = false }; await Assert.ThrowsAsync<AppError>(() => Service.SaveLanguage(0, p)); var vi = new Language { Code = "vi", Name = "Vietnamese", NativeName = "Việt", TtsVoiceCode = "vi-VN" }; await Assert.ThrowsAsync<AppError>(() => Service.SaveLanguage(1, vi)); }
+    [Fact] public async Task TranslationCrud() { var p = await Service.SaveTranslation(0, new() { LocationId = 2, LanguageId = 1, Name = "Draft", NarrationText = "Nội dung", Status = "Draft" }, false); p.Status = "Published"; await Service.SaveTranslation(p.Id, p, true); Assert.NotNull(await Service.Translations()); await Service.DeleteTranslation(p.Id); Assert.Null(await Db.Translations.FindAsync(p.Id)); }
+    [Fact] public async Task EditorCannotPublish() { var e = await Assert.ThrowsAsync<AppError>(() => Service.SaveTranslation(0, new() { LocationId = 2, LanguageId = 1, Name = "Draft", NarrationText = "Nội dung", Status = "Published" }, false)); Assert.Equal(403, e.Status); }
+    [Fact] public async Task TranslationValidation() { await Assert.ThrowsAsync<AppError>(() => Service.SaveTranslation(0, new() { Name = "" }, true)); await Assert.ThrowsAsync<AppError>(() => Service.SaveTranslation(0, new() { LocationId = 999, LanguageId = 1, Name = "N", NarrationText = "N" }, true)); Assert.Equal(409, (await Assert.ThrowsAsync<AppError>(() => Service.SaveTranslation(0, new() { LocationId = 1, LanguageId = 1, Name = "N", NarrationText = "N" }, true))).Status); await Assert.ThrowsAsync<AppError>(() => Service.DeleteTranslation(999)); }
+    [Fact] public async Task EditingTextInvalidatesAudio() { Db.Audios.Add(new() { TranslationId = 1, FileUrl = "/media/example.mp3" }); await Db.SaveChangesAsync(); Assert.Equal("/media/example.mp3", (await Service.Narration(1, "vi")).AudioUrl); await Service.SaveTranslation(1, new() { LocationId = 1, LanguageId = 1, Name = "N", NarrationText = "Changed", Status = "Published" }, true); Assert.Empty(await Db.Audios.ToListAsync()); }
+    [Fact] public async Task PlayLogCompletionStatsAndPrivacy() { var session = Guid.NewGuid().ToString(); var id = await Service.Log(new() { LocationId = 1, LanguageId = 1, SessionId = session, TriggerType = "GPS", Completed = true }); Assert.False(Db.PlayLogs.Find(id)!.Completed); await Assert.ThrowsAsync<AppError>(() => Service.Complete(id, Guid.NewGuid().ToString())); await Service.Complete(id, session); Assert.True(Db.PlayLogs.Find(id)!.Completed); await Service.Feedback(new() { LocationId = 1, LanguageId = 1, Rating = 5, Comment = " Tốt " }); Assert.Equal("Tốt", Db.Feedbacks.Single().Comment); Assert.NotNull(await Service.Statistics()); await Service.Audit("editor", "PUT /admin/translations/1"); Assert.Single(Db.AuditLogs); }
+    [Fact] public async Task RejectInvalidLogsAndFeedback() { await Assert.ThrowsAsync<AppError>(() => Service.Log(new() { LocationId = 1, LanguageId = 1, SessionId = "not-a-uuid" })); await Assert.ThrowsAsync<AppError>(() => Service.Log(new() { LocationId = 1, LanguageId = 3, SessionId = Guid.NewGuid().ToString() })); await Assert.ThrowsAsync<AppError>(() => Service.Feedback(new() { LocationId = 1, LanguageId = 1, Rating = 6 })); await Assert.ThrowsAsync<AppError>(() => Service.Feedback(new() { LocationId = 99, LanguageId = 1, Rating = 5 })); }
+}
+public class AuthTests : Fixture
+{
+    [Fact] public async Task BCryptAndJwtRoles() { Db.AdminUsers.Add(new() { Username = "admin", Role = "Admin", PasswordHash = BCrypt.Net.BCrypt.HashPassword("a-long-test-password") }); await Db.SaveChangesAsync(); var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { { "JWT_SECRET", new string('a', 64) } }).Build(); var auth = new AuthService(new Repository(Db), config); var result = await auth.Login(new("admin", "a-long-test-password")); var json = System.Text.Json.JsonSerializer.SerializeToElement(result); var jwt = new JwtSecurityTokenHandler().ReadJwtToken(json.GetProperty("token").GetString()); Assert.Equal("saigon-guide", jwt.Issuer); Assert.Contains(jwt.Claims, x => x.Value == "Admin"); await Assert.ThrowsAsync<AppError>(() => auth.Login(new("admin", "wrong"))); await Assert.ThrowsAsync<AppError>(() => auth.Login(new("missing", "wrong"))); await Assert.ThrowsAsync<AppError>(() => auth.Login(new("", ""))); }
+}
+class FakeHttp(params HttpResponseMessage[] responses) : HttpMessageHandler, IHttpClientFactory
+{
+    private readonly Queue<HttpResponseMessage> queue = new(responses);
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) => Task.FromResult(queue.Dequeue());
+    public HttpClient CreateClient(string name) => new(this, false);
+}
+public class MediaTests : Fixture
+{
+    readonly string dir = Path.Combine(Path.GetTempPath(), "guide-media-" + Guid.NewGuid());
+    MediaService Media(Dictionary<string, string?>? settings = null, FakeHttp? http = null) { var d = settings ?? []; d["MEDIA_PATH"] = dir; return new(new Repository(Db), new ConfigurationBuilder().AddInMemoryCollection(d).Build(), http ?? new FakeHttp()); }
+    [Fact] public async Task OptionalProvidersFailClearly() { var m = Media(); Assert.Equal(503, (await Assert.ThrowsAsync<AppError>(() => m.Translate(1, 3))).Status); Assert.Equal(503, (await Assert.ThrowsAsync<AppError>(() => m.Generate(1))).Status); }
+    [Fact] public async Task ValidatedUploadAndReplace() { try { var m = Media(); var bytes = Encoding.ASCII.GetBytes("RIFF0000WAVEfake-wave-data"); var url = await m.Upload(1, bytes); Assert.EndsWith(".wav", url); Assert.True(File.Exists(Path.Combine(dir, Path.GetFileName(url)))); await m.Upload(1, Encoding.ASCII.GetBytes("ID3valid-mp3-for-test")); Assert.Single(Db.Audios); await Assert.ThrowsAsync<AppError>(() => m.Upload(1, Encoding.ASCII.GetBytes("<script>bad audio</script>"))); await Assert.ThrowsAsync<AppError>(() => m.Upload(1, new byte[2])); await Assert.ThrowsAsync<AppError>(() => m.Upload(999, bytes)); await m.Upload(1, Encoding.ASCII.GetBytes("OggSvalid-ogg-for-test")); } finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); } }
+    [Fact] public async Task TranslateReturnsDraftNotPublished() { var body = "[{\"translations\":[{\"text\":\"제목\"}]},{\"translations\":[{\"text\":\"설명\"}]},{\"translations\":[{\"text\":\"내용\"}]},{\"translations\":[{\"text\":\"역사\"}]}]"; var m = Media(new() { { "AZURE_TRANSLATOR_KEY", "test" }, { "AZURE_TRANSLATOR_REGION", "test" } }, new FakeHttp(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) })); var r = System.Text.Json.JsonSerializer.SerializeToElement(await m.Translate(1, 3)); Assert.Equal("Draft", r.GetProperty("status").GetString()); Assert.Equal("제목", r.GetProperty("name").GetString()); Assert.Equal("Draft", Db.Translations.Find(3)!.Status); }
+    [Fact] public async Task TranslationProviderFailure() { var m = Media(new() { { "AZURE_TRANSLATOR_KEY", "test" }, { "AZURE_TRANSLATOR_REGION", "test" } }, new FakeHttp(new HttpResponseMessage(HttpStatusCode.Forbidden))); Assert.Equal(502, (await Assert.ThrowsAsync<AppError>(() => m.Translate(1, 3))).Status); }
+    [Fact] public async Task GenerateUsesVoiceListAndStoresAudio() { try { var m = Media(new() { { "AZURE_SPEECH_KEY", "test" }, { "AZURE_SPEECH_REGION", "eastus" } }, new FakeHttp(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[{\"Locale\":\"vi-VN\",\"ShortName\":\"vi-VN-HoaiMyNeural\"}]") }, new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Encoding.ASCII.GetBytes("ID3test-audio")) })); var url = await m.Generate(1); Assert.EndsWith(".mp3", url); Assert.Equal("TTS", Db.Audios.Single().Source); } finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); } }
+    [Fact] public async Task GenerateRejectsBadRegionOrMissingVoice() { await Assert.ThrowsAsync<AppError>(() => Media(new() { { "AZURE_SPEECH_KEY", "test" }, { "AZURE_SPEECH_REGION", "bad/region" } }).Generate(1)); var m = Media(new() { { "AZURE_SPEECH_KEY", "test" }, { "AZURE_SPEECH_REGION", "eastus" } }, new FakeHttp(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[]") })); await Assert.ThrowsAsync<AppError>(() => m.Generate(1)); }
+}
+public class SeedTests
+{
+    [Fact] public async Task FreshDatabaseSeedsSixPlacesSixLanguagesAndIsIdempotent() { using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options); await Seed.Run(db, "admin", "test-password-long"); Assert.Equal(6, await db.Locations.CountAsync()); Assert.Equal(6, await db.Languages.CountAsync()); Assert.Equal(36, await db.Translations.CountAsync()); Assert.True(BCrypt.Net.BCrypt.Verify("test-password-long", db.AdminUsers.Single().PasswordHash)); await Seed.Run(db, "admin", "another-long-password"); Assert.Equal(36, await db.Translations.CountAsync()); Assert.Single(db.AdminUsers); }
+    [Fact] public async Task ShortInitialPasswordIsRejected() { using var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(Guid.NewGuid().ToString()).Options); await Assert.ThrowsAsync<Exception>(() => Seed.Run(db, "admin", "short")); Assert.Empty(db.AdminUsers); }
+}

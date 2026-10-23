@@ -1,0 +1,553 @@
+﻿PRD – Hệ thống Thuyết minh tự động đa ngôn ngữ theo GPS (TP.HCM Audio Guide)
+Môn học: Công nghệ phần mềm  |  Nhóm: 3 thành viên  |  Phiên bản: 1.0  |  Ngày: 23/10/2026
+1. Giới thiệu tài liệu
+1.1 Mục đích
+Tài liệu Product Requirements Document (PRD) này mô tả đầy đủ bối cảnh, mục tiêu, yêu cầu chức năng, yêu cầu phi chức năng, kiến trúc kỹ thuật và thiết kế dữ liệu của hệ thống TP.HCM Audio Guide – ứng dụng web thuyết minh tự động đa ngôn ngữ dựa trên định vị GPS cho du khách tại 6 điểm tham quan nổi tiếng của TP. Hồ Chí Minh. Tài liệu là cơ sở để nhóm lập trình, kiểm thử và đưa trực tiếp vào tài liệu thuyết minh đồ án.
+1.2 Phạm vi
+Hệ thống gồm: (1) ứng dụng web cho du khách (mobile-first), (2) trang quản trị nội dung (Admin CMS), (3) Backend REST API theo kiến trúc 3 lớp, (4) cơ sở dữ liệu MySQL, (5) quy trình CI/CD.
+1.3 Thuật ngữ
+Thuật ngữ
+	Giải thích
+	POI (Point of Interest)
+	Điểm tham quan, ở đây là 1 trong 6 địa điểm
+	Geofence
+	Vùng địa lý hình tròn quanh POI (tâm + bán kính) dùng để kích hoạt thuyết minh
+	TTS
+	Text-to-Speech – chuyển văn bản thành giọng nói
+	Narration
+	Nội dung thuyết minh của một POI theo một ngôn ngữ
+	Haversine
+	Công thức tính khoảng cách giữa 2 toạ độ GPS trên mặt cầu
+	3-tier
+	Kiến trúc 3 lớp: Presentation – Business Logic – Data Access
+	CI/CD
+	Tích hợp liên tục / Triển khai liên tục
+	2. Bối cảnh và vấn đề
+TP.HCM đón hàng triệu lượt khách quốc tế mỗi năm đến từ Hàn Quốc, Nhật Bản, Trung Quốc, Thái Lan, châu Âu, Mỹ... Khu vực trung tâm (Quận 1) tập trung nhiều di tích như Nhà thờ Đức Bà, Bưu điện Trung tâm, Dinh Độc Lập, Chợ Bến Thành. Hiện tại du khách gặp các khó khăn:
+* Rào cản ngôn ngữ: biển chỉ dẫn thường chỉ có tiếng Việt – Anh, thiếu tiếng Hàn, Nhật, Trung, Thái.
+* Chi phí và tính linh hoạt: thuê hướng dẫn viên tốn kém, bị phụ thuộc lịch trình đoàn; thiết bị audio guide truyền thống phải thuê, bấm số thủ công.
+* Thông tin phân mảnh: du khách phải tự tra cứu trên mạng, nội dung không thống nhất, đôi khi sai lệch.
+* Thiếu trải nghiệm theo ngữ cảnh: thông tin không xuất hiện đúng lúc, đúng nơi du khách đang đứng.
+Giải pháp đề xuất: một ứng dụng web chạy trực tiếp trên trình duyệt điện thoại, không cần cài đặt; du khách chọn ngôn ngữ, bật định vị; khi bước vào vùng geofence của một điểm tham quan, hệ thống tự động hiển thị thông tin và phát giọng thuyết minh bằng đúng ngôn ngữ đã chọn.
+3. Mục tiêu sản phẩm và chỉ số thành công
+3.1 Mục tiêu
+1. Tự động kích hoạt thuyết minh khi du khách tới đúng vị trí GPS của 6 điểm.
+2. Hỗ trợ tối thiểu 6 ngôn ngữ: Việt, Anh, Hàn, Nhật, Trung (giản thể), Thái; kiến trúc cho phép thêm ngôn ngữ mới mà không sửa mã nguồn.
+3. Hiển thị bản đồ trực quan, vị trí hiện tại, vị trí 6 điểm và đường đi.
+4. Cho phép quản trị viên quản lý địa điểm, nội dung, ngôn ngữ, audio.
+5. Đáp ứng yêu cầu môn học: kiến trúc 3 lớp, CI/CD, tài liệu UML đầy đủ.
+3.2 Chỉ số đo lường (KPI)
+KPI
+	Mục tiêu
+	Độ trễ từ lúc vào geofence đến lúc bắt đầu phát
+	≤ 3 giây
+	Thời gian phản hồi API (p95)
+	≤ 500 ms
+	Tỉ lệ kích hoạt đúng điểm trong thử nghiệm thực địa
+	≥ 90%
+	Số ngôn ngữ hỗ trợ
+	≥ 6
+	Độ phủ unit test tầng Business
+	≥ 70%
+	Pipeline CI build + test
+	≤ 10 phút
+	4. Đối tượng người dùng
+Persona
+	Mô tả
+	Nhu cầu chính
+	Du khách quốc tế (Kim – Hàn Quốc, 28 tuổi)
+	Đi tự túc, dùng điện thoại, ngại hỏi đường
+	Nghe thuyết minh bằng tiếng Hàn, tự động, không cần cài app
+	Du khách nội địa (anh Nam – Hà Nội)
+	Đi gia đình, muốn hiểu lịch sử
+	Nội dung tiếng Việt chính xác, dễ đọc
+	Quản trị viên (thành viên nhóm/đơn vị vận hành)
+	Quản lý nội dung
+	CRUD địa điểm, bản dịch, audio, xem thống kê
+	5. Phạm vi sản phẩm
+5.1 Trong phạm vi (In scope)
+* Web app du khách: chọn ngôn ngữ, bản đồ, định vị, tự động thuyết minh, phát/tạm dừng/tua audio, xem chi tiết điểm.
+* Chế độ thủ công: chọn điểm trong danh sách để nghe khi không bật GPS.
+* Admin CMS: đăng nhập, quản lý POI, ngôn ngữ, bản dịch, audio, xem thống kê lượt nghe.
+* REST API, CSDL MySQL, CI/CD.
+5.2 Ngoài phạm vi (Out of scope)
+* Ứng dụng native iOS/Android; thanh toán; đặt tour; chế độ offline hoàn toàn; nhận diện hình ảnh; chatbot.
+6. Sáu địa điểm tham quan
+#
+	Địa điểm
+	Địa chỉ
+	Toạ độ tham khảo (lat, lng)
+	Bán kính geofence
+	1
+	Bưu điện Trung tâm Sài Gòn
+	2 Công xã Paris, Bến Nghé, Q.1
+	10.7799, 106.6999
+	60 m
+	2
+	Dinh Độc Lập
+	135 Nam Kỳ Khởi Nghĩa, Q.1
+	10.7770, 106.6955
+	100 m
+	3
+	Nhà thờ Đức Bà
+	01 Công xã Paris, Bến Nghé, Q.1
+	10.7798, 106.6990
+	60 m
+	4
+	Chợ Bến Thành
+	Lê Lợi, Bến Thành, Q.1
+	10.7725, 106.6980
+	80 m
+	5
+	Bảo tàng Lịch sử
+	2 Nguyễn Bỉnh Khiêm, Bến Nghé, Q.1
+	10.7875, 106.7050
+	80 m
+	6
+	Phố đi bộ Nguyễn Huệ
+	Đường Nguyễn Huệ, Bến Nghé, Q.1
+	10.7740, 106.7036
+	120 m
+	Lưu ý: toạ độ và bán kính là giá trị khởi tạo; nhóm cần đo lại bằng GPS thực địa và cấu hình trong Admin. Do Bưu điện và Nhà thờ Đức Bà cách nhau rất gần, hệ thống phải xử lý geofence chồng lấn (xem mục 9.3).
+7. Yêu cầu chức năng
+Ưu tiên theo MoSCoW: M = Must, S = Should, C = Could.
+7.1 Phân hệ du khách
+ID
+	Yêu cầu
+	Ưu tiên
+	FR-01
+	Chọn ngôn ngữ thuyết minh khi vào app; lưu lựa chọn (localStorage), đổi được bất kỳ lúc nào
+	M
+	FR-02
+	Hiển thị bản đồ với marker 6 điểm và vị trí hiện tại của người dùng (cập nhật realtime)
+	M
+	FR-03
+	Xin quyền định vị; xử lý các trường hợp từ chối/không khả dụng
+	M
+	FR-04
+	Tự động phát hiện khi người dùng vào geofence của một POI và kích hoạt thuyết minh
+	M
+	FR-05
+	Hiển thị thẻ thông tin POI (tên, ảnh, mô tả, giờ mở cửa, lịch sử) bằng ngôn ngữ đã chọn
+	M
+	FR-06
+	Phát audio thuyết minh: play/pause/stop/tua, chỉnh tốc độ; ưu tiên file audio đã sinh sẵn, dự phòng TTS của trình duyệt
+	M
+	FR-07
+	Không phát lặp lại cùng một POI trong một phiên trừ khi người dùng yêu cầu (cooldown)
+	M
+	FR-08
+	Danh sách 6 điểm kèm khoảng cách từ vị trí hiện tại; chọn để nghe thủ công
+	M
+	FR-09
+	Chỉ đường từ vị trí hiện tại đến POI được chọn (đường thẳng/route)
+	S
+	FR-10
+	Đánh dấu điểm đã tham quan, hiển thị tiến độ x/6
+	S
+	FR-11
+	Gửi đánh giá/phản hồi cho từng điểm
+	C
+	FR-12
+	Giao diện thích ứng (responsive), chế độ sáng/tối
+	S
+	7.2 Phân hệ quản trị
+ID
+	Yêu cầu
+	Ưu tiên
+	FR-20
+	Đăng nhập quản trị bằng JWT, phân quyền Admin/Editor
+	M
+	FR-21
+	CRUD địa điểm: tên, toạ độ, bán kính, ảnh, giờ mở cửa, trạng thái
+	M
+	FR-22
+	CRUD ngôn ngữ (mã ISO, tên, mã giọng TTS, bật/tắt)
+	M
+	FR-23
+	CRUD nội dung thuyết minh theo từng cặp (POI, ngôn ngữ)
+	M
+	FR-24
+	Dịch tự động nội dung từ tiếng Việt sang ngôn ngữ khác qua dịch vụ dịch máy; quản trị viên duyệt/chỉnh sửa trước khi xuất bản
+	S
+	FR-25
+	Sinh và lưu file audio (TTS) cho narration; tải lên audio thủ công
+	S
+	FR-26
+	Dashboard thống kê: lượt nghe theo POI, theo ngôn ngữ, theo ngày
+	S
+	FR-27
+	Xem nhật ký hệ thống
+	C
+	8. Use case
+8.1 Danh sách tác nhân
+* Du khách (Tourist): người dùng chính, ẩn danh (không cần tài khoản).
+* Quản trị viên (Admin): quản lý nội dung.
+* Dịch vụ GPS của thiết bị / trình duyệt: tác nhân hệ thống ngoài.
+* Dịch vụ dịch máy & TTS: tác nhân hệ thống ngoài.
+8.2 Danh mục use case
+ID
+	Use case
+	Tác nhân
+	UC-01
+	Chọn ngôn ngữ
+	Du khách
+	UC-02
+	Xem bản đồ và vị trí hiện tại
+	Du khách, GPS
+	UC-03
+	Nhận thuyết minh tự động theo GPS
+	Du khách, GPS
+	UC-04
+	Điều khiển audio (play/pause/tua/tốc độ)
+	Du khách
+	UC-05
+	Xem danh sách và chi tiết địa điểm
+	Du khách
+	UC-06
+	Nghe thuyết minh thủ công
+	Du khách
+	UC-07
+	Chỉ đường đến địa điểm
+	Du khách
+	UC-08
+	Gửi phản hồi
+	Du khách
+	UC-09
+	Đăng nhập quản trị
+	Admin
+	UC-10
+	Quản lý địa điểm
+	Admin
+	UC-11
+	Quản lý ngôn ngữ
+	Admin
+	UC-12
+	Quản lý nội dung thuyết minh (có dịch tự động)
+	Admin, Dịch vụ dịch
+	UC-13
+	Sinh/tải audio
+	Admin, Dịch vụ TTS
+	UC-14
+	Xem thống kê
+	Admin
+	8.3 Đặc tả use case chính
+UC-03 – Nhận thuyết minh tự động theo GPS
+Mục
+	Nội dung
+	Tác nhân
+	Du khách; dịch vụ GPS
+	Tiền điều kiện
+	Đã chọn ngôn ngữ; đã cấp quyền định vị; có kết nối mạng
+	Hậu điều kiện
+	Thuyết minh của POI được phát; lượt nghe được ghi nhận
+	Luồng chính
+	1. Trình duyệt liên tục lấy toạ độ (watchPosition). 2. App gọi API /api/locations/nearby với toạ độ hiện tại. 3. Backend tính khoảng cách Haversine tới 6 POI, trả POI nằm trong geofence. 4. App kiểm tra POI chưa phát trong cooldown. 5. App gọi /api/locations/{id}/narration?lang=xx. 6. Hệ thống trả nội dung và URL audio. 7. App hiển thị thẻ thông tin và phát audio. 8. App gửi log lượt nghe /api/playlogs.
+	Luồng thay thế
+	A1. Không có POI nào trong vùng: tiếp tục theo dõi. A2. Nhiều POI cùng lúc: chọn POI gần nhất, các POI còn lại hiển thị dạng gợi ý. A3. Chưa có narration ngôn ngữ đã chọn: dùng ngôn ngữ dự phòng (Anh) và thông báo. A4. Không có file audio: dùng TTS của trình duyệt.
+	Luồng ngoại lệ
+	E1. Từ chối quyền GPS: chuyển sang chế độ thủ công (UC-06). E2. GPS sai số lớn (> 50 m): hiển thị cảnh báo, không tự phát. E3. Mất mạng: dùng dữ liệu đã cache (Service Worker) nếu có.
+	UC-12 – Quản lý nội dung thuyết minh
+Mục
+	Nội dung
+	Tác nhân
+	Admin; dịch vụ dịch máy
+	Tiền điều kiện
+	Đã đăng nhập; POI và ngôn ngữ đã tồn tại
+	Luồng chính
+	1. Admin chọn POI và ngôn ngữ nguồn (Việt). 2. Nhập/chỉnh nội dung. 3. Chọn ngôn ngữ đích và bấm "Dịch tự động". 4. Hệ thống gọi dịch vụ dịch, trả bản nháp. 5. Admin chỉnh sửa, lưu trạng thái Draft. 6. Admin duyệt và Publish. 7. Hệ thống (tuỳ chọn) sinh audio TTS.
+	Ngoại lệ
+	Dịch vụ dịch lỗi: cho phép nhập tay. Dữ liệu không hợp lệ: báo lỗi từng trường.
+	UC-06 – Nghe thuyết minh thủ công: Du khách mở danh sách điểm, chọn một POI, hệ thống trả narration theo ngôn ngữ đã chọn và phát; dùng khi không có GPS hoặc muốn nghe lại.
+8.4 Sơ đồ use case
+Sơ đồ use case tổng quát của hệ thống:
+ use case · 2 tác nhân, 14 use case 
+
+use case · 2 tác nhân, 14 use case
+Du khách dùng UC-01 đến UC-08 (UC-03 là chức năng cốt lõi); quản trị viên dùng UC-09 đến UC-14. GPS thiết bị, dịch máy và TTS là các tác nhân ngoài hỗ trợ UC-03, UC-12, UC-13.
+9. Luồng nghiệp vụ và logic cốt lõi
+9.1 Activity diagram
+Các sơ đồ activity gồm: (A) luồng tự động thuyết minh theo GPS cho du khách; (B) luồng quản trị tạo nội dung đa ngôn ngữ. Hai sơ đồ nằm ngay bên dưới.
+Sơ đồ A – Luồng tự động thuyết minh theo GPS (UC-03).
+ activity · du khách, 3 quyết định, 2 vòng lặp 
+
+activity · du khách, 3 quyết định, 2 vòng lặp
+Trình duyệt lọc vị trí kém chính xác, backend tính geofence, rồi app kiểm tra cooldown trước khi tải và phát thuyết minh; xong thì quay lại theo dõi.
+Sơ đồ B – Luồng quản trị tạo nội dung đa ngôn ngữ (UC-12, UC-13).
+ activity · quản trị nội dung, 3 quyết định 
+
+activity · quản trị nội dung, 3 quyết định
+Bản dịch máy chỉ là bản nháp; chỉ bản đã duyệt mới được Publish, sau đó audio được sinh bằng TTS hoặc tải lên thủ công.
+9.2 Thuật toán phát hiện geofence
+Khoảng cách giữa vị trí (φ1, λ1) và POI (φ2, λ2) tính bằng Haversine, R = 6371000 m:
+a = sin²(Δφ/2) + cos φ1 · cos φ2 · sin²(Δλ/2);  d = 2R · atan2(√a, √(1−a))
+POI được coi là "đang ở trong" khi d ≤ radius_m. Để tránh nhiễu GPS, áp dụng:
+* Hysteresis: vào vùng ở bán kính R, chỉ coi là rời vùng khi d > 1,3R.
+* Debounce: vị trí phải nằm trong vùng liên tục ≥ 2 lần cập nhật (khoảng 3–5 giây) mới kích hoạt.
+* Lọc độ chính xác: bỏ mẫu có coords.accuracy > 50 m.
+9.3 Quy tắc xử lý nhiều điểm và phát lặp
+* Nếu nhiều POI cùng chứa vị trí: chọn POI có d/radius nhỏ nhất; ưu tiên theo trường priority.
+* Cooldown mặc định 30 phút cho mỗi POI trong một phiên; người dùng có thể bấm "Nghe lại".
+* Đang phát POI A mà vào vùng POI B: hỏi người dùng "Chuyển sang B?" thay vì cắt ngang.
+9.4 Chiến lược đa ngôn ngữ
+1. Nội dung gốc tiếng Việt do nhóm biên soạn, kiểm chứng từ nguồn chính thống.
+2. Bản dịch lưu sẵn trong bảng location_translations (không dịch realtime để đảm bảo tốc độ và chi phí).
+3. Dịch tự động bằng dịch vụ dịch máy ở Admin, bắt buộc có bước duyệt trước khi xuất bản.
+4. Audio: sinh trước bằng TTS, lưu file (mp3) và cache; dự phòng speechSynthesis của trình duyệt với lang tương ứng (vi-VN, en-US, ko-KR, ja-JP, zh-CN, th-TH).
+5. Thêm ngôn ngữ mới chỉ cần thêm bản ghi languages và nhập nội dung – không sửa mã.
+6. Chuỗi giao diện (nút, nhãn) dùng i18n (react-i18next) với file JSON theo ngôn ngữ.
+10. Yêu cầu phi chức năng
+Nhóm
+	Yêu cầu
+	Hiệu năng
+	API p95 ≤ 500 ms; trang tải ban đầu ≤ 3 s trên 4G; audio bắt đầu ≤ 2 s
+	Độ tin cậy
+	Uptime mục tiêu 99% giai đoạn demo; xử lý lỗi thống nhất, không crash khi mất GPS/mạng
+	Bảo mật
+	HTTPS bắt buộc (Geolocation API chỉ chạy trên HTTPS); JWT + băm mật khẩu BCrypt; tham số hoá truy vấn (EF Core) chống SQL Injection; CORS whitelist; rate limiting; không lưu dữ liệu định danh du khách
+	Quyền riêng tư
+	Chỉ gửi toạ độ khi cần; không lưu lịch sử toạ độ chi tiết, chỉ lưu log lượt nghe ẩn danh (session id ngẫu nhiên)
+	Khả dụng
+	Mobile-first, nút lớn, hỗ trợ trình duyệt Chrome/Safari/Edge bản mới; đạt tiêu chí WCAG AA cơ bản về tương phản
+	Khả năng mở rộng
+	Stateless API, có thể chạy nhiều instance; thêm ngôn ngữ/POI bằng dữ liệu
+	Bảo trì
+	Tách 3 lớp, dependency injection, unit test, logging (Serilog), coding convention
+	Tương thích
+	Hỗ trợ Unicode UTF-8 (utf8mb4) cho tiếng Hàn, Nhật, Trung, Thái
+	11. Kiến trúc hệ thống
+11.1 Công nghệ
+Lớp
+	Công nghệ
+	Giao diện du khách
+	React (SPA/PWA), thiết kế mẫu bằng HTML/CSS/JS, Leaflet + OpenStreetMap, Geolocation API, Web Speech API, react-i18next
+	Backend
+	C#, ASP.NET Core Web API (.NET 8), Entity Framework Core (Pomelo MySQL provider), AutoMapper, FluentValidation, Serilog, Swagger
+	CSDL
+	MySQL 8, quản trị bằng phpMyAdmin
+	Dịch vụ ngoài
+	Dịch máy (Google Cloud Translation hoặc Azure Translator), TTS (Google/Azure) – gọi từ backend
+	DevOps
+	Git/GitHub, GitHub Actions, Docker, Docker Compose, Nginx (reverse proxy + HTTPS)
+	11.2 Kiến trúc 3 lớp của Backend
+* Presentation Layer (API): Controllers, DTO, middleware (xác thực JWT, xử lý lỗi, logging). Chỉ nhận request, validate, gọi Service, trả response.
+* Business Logic Layer (BLL): Services chứa nghiệp vụ: GeofenceService, NarrationService, TranslationService, AudioService, AuthService, StatisticsService.
+* Data Access Layer (DAL): Repository + AppDbContext (EF Core), Entities, Migrations. Mọi truy cập MySQL đi qua lớp này.
+Quy tắc phụ thuộc một chiều: Presentation → BLL → DAL; các lớp giao tiếp qua interface (DIP), tiêm phụ thuộc bằng DI container.
+11.3 Cấu trúc solution đề xuất
+AudioGuide.sln
+├── AudioGuide.Api/            (Presentation: Controllers, Middleware, Program.cs)
+├── AudioGuide.Business/       (Services, Interfaces, DTOs, Validators)
+├── AudioGuide.Data/           (Entities, DbContext, Repositories, Migrations)
+├── AudioGuide.Tests/          (xUnit: Business + Integration tests)
+├── frontend/                  (React app: src/pages, components, services, i18n)
+├── prototype/                 (HTML, CSS, JS giao diện mẫu)
+├── docker-compose.yml
+└── .github/workflows/         (ci.yml, cd.yml)
+11.4 Component diagram và Deployment diagram
+Mô tả bằng lời cho hai sơ đồ bên dưới. Mô tả deployment: trình duyệt du khách/admin → Nginx (HTTPS) → container Frontend (React build tĩnh) và container API (.NET) → container MySQL (volume dữ liệu) ; phpMyAdmin chỉ truy cập nội bộ/VPN; API gọi ra dịch vụ dịch và TTS; file audio lưu ở thư mục volume /media, phục vụ qua Nginx.
+Component diagram.
+ component · 3 lớp backend + 4 hệ thống ngoài 
+
+component · 3 lớp backend + 4 hệ thống ngoài
+Request đi qua Middleware vào Controller, Controller chỉ gọi Service qua interface, Service truy cập MySQL qua Repository và EF Core (Pomelo); TranslationService và AudioService gọi dịch vụ dịch máy, TTS và ghi file vào kho audio.
+Deployment diagram.
+ deployment · 1 máy chủ, 5 container, pipeline CI/CD 
+
+deployment · 1 máy chủ, 5 container, pipeline CI/CD
+Nginx là cửa vào duy nhất (HTTPS), định tuyến / tới Frontend và /api tới Backend; phpMyAdmin không mở ra Internet. Pipeline CD đẩy image lên GHCR rồi SSH vào máy chủ để cập nhật container.
+12. Thiết kế cơ sở dữ liệu
+12.1 ERD
+Sơ đồ ERD ngay bên dưới. Quan hệ chính: một Location có nhiều LocationTranslation; một Language có nhiều LocationTranslation; một LocationTranslation có tối đa một AudioNarration (hoặc nhiều phiên bản); PlayLog tham chiếu Location và Language; Feedback tham chiếu Location.
+ ERD · 7 bảng, 7 quan hệ 
+
+ERD · 7 bảng, 7 quan hệ
+Sơ đồ chỉ liệt kê các cột khóa và cột quan trọng; đầy đủ cột xem từ điển dữ liệu bên dưới. Mỗi cặp (địa điểm, ngôn ngữ) có đúng một dòng trong location_translations, nên thêm ngôn ngữ mới chỉ là thêm dữ liệu.
+12.2 Từ điển dữ liệu
+admin_users: id (PK), username (unique), password_hash, full_name, role (Admin/Editor), created_at, is_active.
+languages: id (PK), code (unique, vd: vi, en, ko, ja, zh, th), name, native_name, tts_voice_code (vd: ko-KR), is_default, is_active.
+locations: id (PK), slug (unique), latitude DECIMAL(9,6), longitude DECIMAL(9,6), radius_m INT, priority INT, image_url, opening_hours, address, display_order, is_active, created_at, updated_at.
+location_translations: id (PK), location_id (FK), language_id (FK), name, short_description, narration_text (TEXT), history_text (TEXT), status (Draft/Published), is_machine_translated, updated_at; ràng buộc unique (location_id, language_id).
+audio_narrations: id (PK), translation_id (FK), file_url, duration_sec, source (TTS/Upload), created_at.
+play_logs: id (PK), session_id (CHAR 36), location_id (FK), language_id (FK), trigger_type (GPS/Manual), played_at, completed (bool).
+feedbacks: id (PK), location_id (FK), rating (1–5), comment, language_id (FK), created_at.
+Chỉ mục: locations(is_active, display_order), location_translations(location_id, language_id) unique, play_logs(location_id, played_at). Toàn bộ bảng dùng charset utf8mb4, collation utf8mb4_unicode_ci.
+13. Đặc tả API (REST)
+Method
+	Endpoint
+	Mô tả
+	Auth
+	GET
+	/api/languages
+	Danh sách ngôn ngữ đang bật
+	Không
+	GET
+	/api/locations?lang=xx
+	Danh sách 6 điểm (tên, toạ độ, ảnh) theo ngôn ngữ
+	Không
+	GET
+	/api/locations/nearby?lat=&lng=&acc=
+	POI nằm trong geofence, kèm khoảng cách
+	Không
+	GET
+	/api/locations/{id}/narration?lang=xx
+	Nội dung + URL audio
+	Không
+	POST
+	/api/playlogs
+	Ghi nhận lượt nghe
+	Không
+	POST
+	/api/feedbacks
+	Gửi phản hồi
+	Không
+	POST
+	/api/auth/login
+	Đăng nhập, trả JWT
+	Không
+	CRUD
+	/api/admin/locations
+	Quản lý địa điểm
+	JWT
+	CRUD
+	/api/admin/languages
+	Quản lý ngôn ngữ
+	JWT
+	CRUD
+	/api/admin/translations
+	Quản lý nội dung thuyết minh
+	JWT
+	POST
+	/api/admin/translations/auto-translate
+	Dịch tự động
+	JWT
+	POST
+	/api/admin/audio/generate
+	Sinh audio TTS
+	JWT
+	GET
+	/api/admin/statistics
+	Thống kê lượt nghe
+	JWT
+	Định dạng lỗi thống nhất: { "status": 400, "code": "VALIDATION_ERROR", "message": "...", "errors": [] }.
+14. Thiết kế giao diện (UI/UX)
+Giao diện được thiết kế mẫu bằng HTML, CSS, JS trước, sau đó chuyển thành component React.
+Màn hình
+	Thành phần chính
+	Chọn ngôn ngữ
+	Lưới cờ + tên ngôn ngữ bản địa, nút "Bắt đầu"
+	Bản đồ chính
+	Bản đồ Leaflet toàn màn hình, 6 marker, chấm vị trí hiện tại, thanh trạng thái GPS, nút "Danh sách điểm"
+	Thẻ thuyết minh (bottom sheet)
+	Ảnh, tên điểm, mô tả, trình phát audio (play/pause/tua/tốc độ), nút "Chỉ đường"
+	Danh sách điểm
+	6 thẻ, khoảng cách, nhãn "Đã tham quan"
+	Admin – Đăng nhập, Dashboard, Quản lý POI, Quản lý bản dịch, Thống kê
+	Bảng dữ liệu, form, biểu đồ
+	Nguyên tắc: mobile-first; nút phát tối thiểu 48 px; phông chữ hỗ trợ CJK và Thái (Noto Sans); hiển thị rõ trạng thái GPS (đang định vị / độ chính xác / bị từ chối). Lưu ý trình duyệt di động: audio chỉ được tự phát sau khi người dùng đã tương tác ít nhất một lần, do đó màn hình chọn ngôn ngữ có nút "Bắt đầu" để "mở khoá" âm thanh.
+15. CI/CD
+15.1 Quy trình Git
+Nhánh main (ổn định), develop (tích hợp), feature/*. Pull Request bắt buộc có ít nhất 1 reviewer và CI xanh mới được merge. Commit theo Conventional Commits.
+15.2 Pipeline CI (GitHub Actions – kích hoạt khi push/PR)
+1. Checkout mã nguồn.
+2. Backend: dotnet restore → dotnet build → dotnet test (kèm báo cáo coverage).
+3. Frontend: npm ci → npm run lint → npm test → npm run build.
+4. Phân tích chất lượng (analyzer/SonarCloud, tuỳ chọn).
+5. Build Docker image cho API và Frontend.
+15.3 Pipeline CD (khi merge vào main)
+1. Đẩy image lên registry (GitHub Container Registry).
+2. SSH vào máy chủ, docker compose pull && docker compose up -d.
+3. Chạy migration EF Core, kiểm tra health check /health.
+4. Lỗi → rollback về image trước đó.
+Bí mật (chuỗi kết nối DB, khoá API dịch/TTS, JWT secret) lưu trong GitHub Secrets, không đưa vào mã nguồn.
+16. Chiến lược kiểm thử
+Cấp độ
+	Nội dung
+	Công cụ
+	Unit test
+	GeofenceService (Haversine, hysteresis, nhiều POI), NarrationService (fallback ngôn ngữ), AuthService
+	xUnit, Moq
+	Integration test
+	API + MySQL test (Testcontainers)
+	xUnit, WebApplicationFactory
+	UI test
+	Luồng chọn ngôn ngữ, phát audio
+	Jest, React Testing Library
+	Thực địa
+	Đi bộ qua 6 điểm, ghi nhận tỉ lệ kích hoạt đúng, độ trễ
+	Checklist thủ công
+	Giả lập GPS
+	Dùng Chrome DevTools Sensors để mô phỏng toạ độ khi chưa đi thực địa
+	DevTools
+	Tiêu chí chấp nhận chính: (1) Vào vùng POI → phát đúng ngôn ngữ trong ≤ 3 s; (2) đổi ngôn ngữ → nội dung và giọng đọc đổi tương ứng; (3) từ chối GPS → vẫn nghe được thủ công; (4) không phát lặp trong cooldown; (5) Admin thêm ngôn ngữ mới không cần sửa mã.
+17. Rủi ro và giải pháp
+Rủi ro
+	Mức độ
+	Giải pháp
+	GPS sai số lớn trong khu nhà cao tầng
+	Cao
+	Lọc accuracy, hysteresis, debounce; luôn có chế độ thủ công
+	Bưu điện và Nhà thờ Đức Bà rất gần nhau
+	Trung bình
+	Bán kính nhỏ, chọn POI gần nhất, hỏi xác nhận khi chuyển
+	Trình duyệt chặn tự phát audio
+	Cao
+	Nút "Bắt đầu" mở khoá audio; hiển thị nút phát nổi bật
+	Bản dịch máy sai thuật ngữ lịch sử
+	Trung bình
+	Bắt buộc duyệt thủ công; từ điển thuật ngữ
+	Thiếu giọng TTS cho một số ngôn ngữ trên thiết bị
+	Trung bình
+	Sinh sẵn audio ở server thay vì phụ thuộc thiết bị
+	Chi phí dịch vụ dịch/TTS
+	Thấp
+	Chỉ gọi lúc quản trị, lưu kết quả, không gọi realtime
+	Geolocation yêu cầu HTTPS
+	Cao
+	Dùng HTTPS (Let's Encrypt) cả khi demo; dùng tunnel nếu chạy local
+	Thành viên chậm tiến độ
+	Trung bình
+	Chia việc theo module, họp tuần, board Kanban
+	18. Kế hoạch và phân công
+18.1 Lộ trình 
+
+
+	Công việc
+	
+
+	Khảo sát, viết PRD, thiết kế UML, chốt công nghệ, khởi tạo repo và CI
+	
+
+	Thiết kế CSDL, migration, seed 6 điểm; prototype HTML/CSS/JS
+	
+
+	Backend: API địa điểm, ngôn ngữ, narration, geofence; unit test
+	
+
+	Frontend React: bản đồ, định vị, trình phát audio, i18n
+	
+
+	Admin CMS, dịch tự động, sinh audio; CD lên máy chủ
+	
+
+	Kiểm thử tích hợp, thực địa, sửa lỗi, tối ưu
+	
+
+	Hoàn thiện tài liệu, demo, báo cáo
+	18.2 Phân công đề xuất
+Thành viên
+	Vai trò
+	Trách nhiệm chính
+	TV1
+	Backend lead
+	Kiến trúc 3 lớp, API, CSDL, GeofenceService, auth
+	TV2
+	Frontend lead
+	Prototype HTML/CSS/JS, React, bản đồ, audio, i18n
+	TV3
+	DevOps + QA + nội dung
+	CI/CD, Docker, kiểm thử, biên soạn nội dung 6 điểm, Admin CMS
+	
+
+19. Phụ lục sơ đồ
+Các sơ đồ UML bắt buộc được trình bày tại các mục sau: Use case (8.4), Activity (9.1), Component và Deployment (11.4), ERD (12.1).

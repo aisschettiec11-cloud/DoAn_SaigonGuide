@@ -1,0 +1,48 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "backend", "backend", "{3D341B74-8525-4892-83BA-1A7832189C14}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AudioGuide.Api", "backend\AudioGuide.Api\AudioGuide.Api.csproj", "{CDC1B970-60D9-458D-A257-93CB5B3E8D32}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AudioGuide.Business", "backend\AudioGuide.Business\AudioGuide.Business.csproj", "{05613B74-3308-4F37-A1D1-AF213609F6BB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AudioGuide.Data", "backend\AudioGuide.Data\AudioGuide.Data.csproj", "{14648471-F5E6-40B1-838E-42DA25A18188}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AudioGuide.Tests", "backend\AudioGuide.Tests\AudioGuide.Tests.csproj", "{1E425A92-7AAF-4435-AF9A-4E743D35FBA6}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{CDC1B970-60D9-458D-A257-93CB5B3E8D32}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CDC1B970-60D9-458D-A257-93CB5B3E8D32}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CDC1B970-60D9-458D-A257-93CB5B3E8D32}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CDC1B970-60D9-458D-A257-93CB5B3E8D32}.Release|Any CPU.Build.0 = Release|Any CPU
+		{05613B74-3308-4F37-A1D1-AF213609F6BB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{05613B74-3308-4F37-A1D1-AF213609F6BB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{05613B74-3308-4F37-A1D1-AF213609F6BB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{05613B74-3308-4F37-A1D1-AF213609F6BB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{14648471-F5E6-40B1-838E-42DA25A18188}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{14648471-F5E6-40B1-838E-42DA25A18188}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{14648471-F5E6-40B1-838E-42DA25A18188}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{14648471-F5E6-40B1-838E-42DA25A18188}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1E425A92-7AAF-4435-AF9A-4E743D35FBA6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1E425A92-7AAF-4435-AF9A-4E743D35FBA6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1E425A92-7AAF-4435-AF9A-4E743D35FBA6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1E425A92-7AAF-4435-AF9A-4E743D35FBA6}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{CDC1B970-60D9-458D-A257-93CB5B3E8D32} = {3D341B74-8525-4892-83BA-1A7832189C14}
+		{05613B74-3308-4F37-A1D1-AF213609F6BB} = {3D341B74-8525-4892-83BA-1A7832189C14}
+		{14648471-F5E6-40B1-838E-42DA25A18188} = {3D341B74-8525-4892-83BA-1A7832189C14}
+		{1E425A92-7AAF-4435-AF9A-4E743D35FBA6} = {3D341B74-8525-4892-83BA-1A7832189C14}
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/coverage/
+**/TestResults/
+.env
+.env.*
+!.env.example
+media/
+playwright-report/
+test-results/
+
+__pycache__/
