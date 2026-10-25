@@ -9,6 +9,7 @@ using Serilog;
 using System.Text;
 using System.Threading.RateLimiting;
 var b = WebApplication.CreateBuilder(args);
+b.Services.AddScoped<FallbackSpeechService>();
 var secret = b.Configuration["JWT_SECRET"] ?? throw new Exception("Cần JWT_SECRET (ít nhất 32 ký tự)"); if (secret.Length < 32) throw new Exception("JWT_SECRET cần ít nhất 32 ký tự");
 b.Host.UseSerilog((ctx, c) => c.MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning).WriteTo.Console());
 var conn = b.Configuration["DB_CONNECTION"] ?? throw new Exception("Cần DB_CONNECTION");
@@ -33,6 +34,11 @@ api.MapGet("/languages", (IGuideService s) => s.Languages());
 api.MapGet("/locations", (string? lang, IGuideService s) => s.Locations(lang ?? "vi"));
 api.MapGet("/locations/nearby", async (double lat, double lng, double acc, IGeofenceService geo, IRepository r) => geo.Nearby(await r.Db.Locations.AsNoTracking().Where(x => x.IsActive).ToListAsync(), lat, lng, acc));
 api.MapGet("/locations/{id:int}/narration", (int id, string? lang, IGuideService s) => s.Narration(id, lang ?? "vi"));
+api.MapPost("/locations/{id:int}/speech", async (int id, string lang, IGuideService guide, FallbackSpeechService speech) =>
+{
+    var narration = await guide.Narration(id, lang);
+    return new { url = narration.AudioUrl ?? await speech.Generate(narration) };
+});
 api.MapPost("/playlogs", async (PlayLog p, IGuideService s) => Results.Ok(new { id = await s.Log(p) }));
 api.MapPut("/playlogs/{id:long}/complete", async (long id, CompleteRequest p, IGuideService s) => { await s.Complete(id, p.SessionId); return Results.NoContent(); });
 api.MapPost("/feedbacks", async (Feedback p, IGuideService s) => { await s.Feedback(p); return Results.Created("/api/feedbacks", new { message = "Cảm ơn phản hồi của bạn" }); });

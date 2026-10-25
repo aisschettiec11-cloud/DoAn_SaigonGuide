@@ -62,21 +62,35 @@ export function useNarrator(t, onStarted) {
         body: JSON.stringify({ sessionId: sessionId() }),
       }).catch(() => {});
   }
-  function speak(n, trigger, gen, offset = 0) {
-    const synth = window.speechSynthesis;
-    if (!synth) {
-      setError(t("noVoice"));
-      change("idle");
-      return;
+  async function speakFromServer(n, trigger, gen) {
+    if (gen !== generation.current) return;
+    change("loading");
+    try {
+      const { url } = await post(
+        `/locations/${n.locationId}/speech?lang=${encodeURIComponent(n.languageCode)}`,
+        {},
+      );
+      if (gen === generation.current)
+        await playFile(n, trigger, gen, url, false);
+    } catch (error) {
+      if (gen === generation.current) {
+        setError(t(error.status === 400 ? "noVoice" : "audioError"));
+        change("idle");
+      }
     }
-    const voices = synth.getVoices();
+  }
+  async function speak(n, trigger, gen, offset = 0) {
+    const synth = window.speechSynthesis;
+    const voices = synth?.getVoices() || [];
+    const locale = n.voice.toLowerCase().replaceAll("_", "-");
+    const language = n.languageCode.toLowerCase().split("-")[0];
     const voice =
-      voices.find((v) => v.lang.toLowerCase() === n.voice.toLowerCase()) ||
-      voices.find((v) => v.lang.split("-")[0] === n.languageCode);
+      voices.find(
+        (v) => v.lang.toLowerCase().replaceAll("_", "-") === locale,
+      ) ||
+      voices.find((v) => v.lang.toLowerCase().split(/[-_]/)[0] === language);
     if (!voice) {
-      setError(t("noVoice"));
-      change("idle");
-      return;
+      return speakFromServer(n, trigger, gen);
     }
     const u = new SpeechSynthesisUtterance(n.narrationText.slice(offset));
     utterance.current = u;
@@ -105,8 +119,8 @@ export function useNarrator(t, onStarted) {
         e.error !== "interrupted" &&
         e.error !== "canceled"
       ) {
-        setError(t("audioError"));
-        change("idle");
+        utterance.current = null;
+        speakFromServer(n, trigger, gen);
       }
     };
     synth.speak(u);
@@ -120,44 +134,53 @@ export function useNarrator(t, onStarted) {
     logPromise.current = null;
     setError("");
     change("loading");
-    if (n.audioUrl) {
-      const a = new Audio(n.audioUrl);
-      player.current = a;
-      a.playbackRate = rateRef.current;
-      a.onloadedmetadata = () => {
-        if (gen === generation.current) setDuration(a.duration);
-      };
-      a.ontimeupdate = () => {
-        if (gen === generation.current) setProgress(a.currentTime);
-      };
-      a.onplaying = () => {
-        if (gen === generation.current) {
-          change("playing");
-          started(n, trigger, gen);
-        }
-      };
-      a.onended = () => ended(gen, logPromise.current);
-      a.onerror = () => {
-        if (gen === generation.current) {
-          a.pause();
+    if (n.audioUrl) await playFile(n, trigger, gen, n.audioUrl);
+    else await speak(n, trigger, gen);
+  }
+  async function playFile(n, trigger, gen, url, fallback = true) {
+    const fail = () => {
+      if (fallback) speak(n, trigger, gen);
+      else {
+        setError(t("audioError"));
+        change("idle");
+      }
+    };
+    const a = new Audio(url);
+    player.current = a;
+    a.playbackRate = rateRef.current;
+    a.onloadedmetadata = () => {
+      if (gen === generation.current) setDuration(a.duration);
+    };
+    a.ontimeupdate = () => {
+      if (gen === generation.current) setProgress(a.currentTime);
+    };
+    a.onplaying = () => {
+      if (gen === generation.current) {
+        change("playing");
+        started(n, trigger, gen);
+      }
+    };
+    a.onended = () => ended(gen, logPromise.current);
+    a.onerror = () => {
+      if (gen === generation.current) {
+        a.pause();
+        player.current = null;
+        fail();
+      }
+    };
+    try {
+      await a.play();
+    } catch (e) {
+      if (gen === generation.current) {
+        if (e.name === "NotAllowedError") {
+          setError(t("audioError"));
+          change("idle");
+        } else if (player.current) {
           player.current = null;
-          speak(n, trigger, gen);
-        }
-      };
-      try {
-        await a.play();
-      } catch (e) {
-        if (gen === generation.current) {
-          if (e.name === "NotAllowedError") {
-            setError(t("audioError"));
-            change("idle");
-          } else if (player.current) {
-            player.current = null;
-            speak(n, trigger, gen);
-          }
+          fail();
         }
       }
-    } else speak(n, trigger, gen);
+    }
   }
   function toggle() {
     if (stateRef.current === "playing") {

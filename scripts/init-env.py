@@ -12,7 +12,7 @@ else:
             'MYSQL_PASSWORD': secrets.token_hex(24),
             'JWT_SECRET': secrets.token_hex(48),
             'ADMIN_USERNAME': 'admin',
-            'ADMIN_PASSWORD': secrets.token_urlsafe(20),
+            'ADMIN_PASSWORD': 'Admin!',
         }.items())+'\n')
     p.chmod(0o600)
-    print('Đã tạo .env với mật khẩu ngẫu nhiên. Xem ADMIN_PASSWORD tại máy của bạn để đăng nhập.')
+    print('Đã tạo .env. Tài khoản quản trị dùng mật khẩu Admin!.')

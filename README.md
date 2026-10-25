@@ -22,9 +22,9 @@ Lần đầu mất vài phút tải image/thư viện. API tự áp dụng EF mi
 | Health check | `http://localhost:8080/health` |
 | MySQL | `127.0.0.1:3306` |
 
-**Đăng nhập CMS:** tên trong `ADMIN_USERNAME` (mặc định `admin`), mật khẩu riêng được sinh trong `ADMIN_PASSWORD` của `.env`. Mở tệp này trên máy của bạn; không chia sẻ hoặc commit. Đổi `ADMIN_PASSWORD` sau khi database đã có tài khoản sẽ không thay mật khẩu trong database. Cần sao lưu trước khi thực hiện quản trị tài khoản trực tiếp.
+**Đăng nhập CMS:** tên trong `ADMIN_USERNAME` (mặc định `admin`), mật khẩu cố định `Admin!` trong `ADMIN_PASSWORD` của `.env`. Đổi `ADMIN_PASSWORD` sau khi database đã có tài khoản sẽ không thay mật khẩu trong database.
 
-**phpMyAdmin:** server `db`, user `guide`, mật khẩu `MYSQL_PASSWORD` trong `.env`; chọn database `saigon_audio_guide`. Root chỉ dùng khi cần quản trị cấp server, với `MYSQL_ROOT_PASSWORD`. phpMyAdmin và cổng MySQL chỉ bind vào loopback.
+**phpMyAdmin:** mở `http://localhost:8081`, server `db`, username `admin`, mật khẩu `Admin!`; chọn database `saigon_audio_guide`. Tài khoản có quyền quản trị database này. Script `scripts/mysql-init/01-admin.sql` tạo tài khoản khi khởi tạo volume MySQL mới; với database đã có dữ liệu, chạy script một lần bằng tài khoản root. API tiếp tục dùng tài khoản `guide`. phpMyAdmin và cổng MySQL chỉ bind vào loopback.
 
 ```bash
 docker compose ps
@@ -48,6 +48,8 @@ Không chạy `docker compose down -v` khi còn dữ liệu cần giữ. Máy c�
 - Chế độ tối, responsive, PWA cache shell/nội dung đã tải để đọc lại khi mất mạng. Không cam kết offline đầy đủ; GPS API phía server, bản đồ và giọng TTS có thể cần mạng.
 
 ## GPS, audio và dữ liệu mẫu
+
+Mọi ngôn ngữ dùng chung luồng phát: file audio trong CMS → giọng thiết bị → dịch vụ `tts` (gTTS) khi thiếu giọng hoặc giọng thiết bị lỗi. Danh sách ngôn ngữ được hỗ trợ lấy từ `gtts.lang.tts_langs()` tại `backend/tts/server.py`; frontend và API không giữ danh sách riêng. Thêm ngôn ngữ trong CMS với mã gTTS hỗ trợ sẽ dùng cùng luồng, không cần thêm nhánh xử lý. Lần tạo MP3 đầu tiên cần Internet; file được lưu trong volume `audio-data` theo ngôn ngữ và nội dung để tái sử dụng. Cập nhật bằng `docker compose up -d --build`. Khi chạy API ngoài Docker, đặt `TTS_SERVICE_URL` trỏ đến dịch vụ TTS nội bộ.
 
 Chrome/Edge xem `localhost` là secure context, nên GPS có thể chạy qua HTTP tại localhost. **Điện thoại truy cập IP LAN cần HTTPS** với chứng chỉ được thiết bị tin cậy; cấu hình reverse proxy/TLS trước khi thử thực địa. Các cổng hiện bind `127.0.0.1`, cần chủ động cấu hình riêng nếu muốn truy cập qua mạng LAN.
 

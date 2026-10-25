@@ -7,8 +7,10 @@ services:
       MYSQL_DATABASE: saigon_audio_guide
       MYSQL_USER: guide
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Run scripts/init-env.py first}
-    ports: ["127.0.0.1:3306:3306"]
-    volumes: ["db-data:/var/lib/mysql"]
+    ports: ["127.0.0.1:3307:3306"]
+    volumes:
+      - db-data:/var/lib/mysql
+      - ./scripts/mysql-init:/docker-entrypoint-initdb.d:ro
     command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
     healthcheck:
       test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql -h 127.0.0.1 -u guide saigon_audio_guide -e 'SELECT 1' >/dev/null 2>&1"]
@@ -25,6 +27,7 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       MEDIA_PATH: /app/media
+      TTS_SERVICE_URL: http://tts:8080
       CORS_ORIGINS: http://localhost:8080,http://localhost:5173
       AZURE_TRANSLATOR_KEY: ${AZURE_TRANSLATOR_KEY:-}
       AZURE_TRANSLATOR_REGION: ${AZURE_TRANSLATOR_REGION:-}
@@ -33,11 +36,15 @@ services:
     volumes: ["audio-data:/app/media"]
     depends_on:
       db: {condition: service_healthy}
+      tts: {condition: service_started}
     restart: unless-stopped
   web:
     build: {context: frontend}
     ports: ["127.0.0.1:8080:80"]
     depends_on: [api]
+    restart: unless-stopped
+  tts:
+    build: {context: backend/tts}
     restart: unless-stopped
   phpmyadmin:
     image: phpmyadmin:5.2-apache

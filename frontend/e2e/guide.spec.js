@@ -184,10 +184,13 @@ test("CMS login, edit narration and preview draft workflow", async ({
     page.getByRole("button", { name: "Đăng nhập", exact: true }),
   ).toBeVisible();
 });
-test("desktop visual and missing TTS voice shows an actionable message", async ({
+test("desktop visual and unavailable fallback audio shows an actionable message", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.route("**/api/locations/*/speech?lang=vi", (route) =>
+    route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "Speech unavailable" }) }),
+  );
   await speechMock(page);
   await begin(page);
   await page.locator(".place-card").first().click();
@@ -201,7 +204,7 @@ test("desktop visual and missing TTS voice shows an actionable message", async (
     .getByRole("button", { name: "Nghe câu chuyện", exact: true })
     .click();
   await expect(page.locator(".detail-card [role=alert]")).toContainText(
-    "chưa có giọng đọc",
+    "Không phát được âm thanh",
   );
   await page.screenshot({ path: "/tmp/saigon-desktop.png", fullPage: true });
 });
